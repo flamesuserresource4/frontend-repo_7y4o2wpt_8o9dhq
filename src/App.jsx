@@ -1,73 +1,151 @@
-function App() {
+import { useEffect, useMemo, useState } from "react";
+import Navbar from "./components/Navbar";
+import ProductCard from "./components/ProductCard";
+import CartDrawer from "./components/CartDrawer";
+
+const API_BASE = import.meta.env.VITE_BACKEND_URL || "";
+
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
+  const [query, setQuery] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState([]);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    async function init() {
+      try {
+        setLoading(true);
+        // seed once if no products
+        const listRes = await fetch(`${API_BASE}/api/products`).then((r) => r.json());
+        if (!listRes || listRes.length === 0) {
+          await fetch(`${API_BASE}/api/seed`, { method: "POST" });
+        }
+        const data = await fetch(`${API_BASE}/api/products`).then((r) => r.json());
+        setProducts(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    init();
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!query) return products;
+    return products.filter((p) =>
+      `${p.title} ${p.description ?? ""} ${p.category}`
+        .toLowerCase()
+        .includes(query.toLowerCase())
+    );
+  }, [products, query]);
+
+  function addToCart(product) {
+    setCart((prev) => {
+      const ex = prev.find((p) => p.id === product.id);
+      if (ex) return prev.map((p) => (p.id === product.id ? { ...p, qty: p.qty + 1 } : p));
+      return [...prev, { ...product, qty: 1 }];
+    });
+    setCartOpen(true);
+  }
+
+  function setQty(id, qty) {
+    setCart((prev) => prev.map((p) => (p.id === id ? { ...p, qty } : p)));
+  }
+
+  async function checkout() {
+    try {
+      const payload = {
+        customer_name: "Guest",
+        customer_email: "guest@example.com",
+        shipping_address: "India",
+        items: cart.map((c) => ({ product_id: c.id, quantity: c.qty })),
+      };
+      const res = await fetch(`${API_BASE}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Checkout failed");
+      setCart([]);
+      setMessage("Order placed! Check your orders below.");
+      setCartOpen(false);
+    } catch (e) {
+      setMessage("Checkout failed. Try again.");
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Subtle pattern overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_50%)]"></div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <Navbar cartCount={cart.length} onSearch={setQuery} />
 
-      <div className="relative min-h-screen flex items-center justify-center p-8">
-        <div className="max-w-2xl w-full">
-          {/* Header with Flames icon */}
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center mb-6">
-              <img
-                src="/flame-icon.svg"
-                alt="Flames"
-                className="w-24 h-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]"
-              />
-            </div>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <section className="text-center mb-10">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Soni Zi Creations</h1>
+          <p className="text-slate-600 mt-2">Beautiful handcrafted products you can buy right now.</p>
+        </section>
 
-            <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-              Flames Blue
-            </h1>
-
-            <p className="text-xl text-blue-200 mb-6">
-              Build applications through conversation
-            </p>
+        {message && (
+          <div className="mb-6 p-3 rounded border border-emerald-200 bg-emerald-50 text-emerald-700">
+            {message}
           </div>
+        )}
 
-          {/* Instructions */}
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-2xl p-8 shadow-xl mb-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                1
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Describe your idea</h3>
-                <p className="text-blue-200/80 text-sm">Use the chat panel on the left to tell the AI what you want to build</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                2
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Watch it build</h3>
-                <p className="text-blue-200/80 text-sm">Your app will appear in this preview as the AI generates the code</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                3
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Refine and iterate</h3>
-                <p className="text-blue-200/80 text-sm">Continue the conversation to add features and make changes</p>
-              </div>
-            </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-64 bg-slate-100 rounded-xl animate-pulse" />
+            ))}
           </div>
-
-          {/* Footer */}
-          <div className="text-center">
-            <p className="text-sm text-blue-300/60">
-              No coding required • Just describe what you want
-            </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {filtered.map((p) => (
+              <ProductCard key={p.id} product={p} onAdd={addToCart} />
+            ))}
           </div>
-        </div>
-      </div>
+        )}
+
+        <section className="mt-12">
+          <h2 className="text-xl font-semibold mb-3">Recent Orders (demo)</h2>
+          <OrdersList />
+        </section>
+      </main>
+
+      <CartDrawer
+        open={cartOpen}
+        items={cart}
+        onClose={() => setCartOpen(false)}
+        onCheckout={checkout}
+        setQty={setQty}
+      />
     </div>
-  )
+  );
 }
 
-export default App
+function OrdersList() {
+  const [orders, setOrders] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetch(`${API_BASE}/api/orders`).then((r) => r.json());
+        setOrders(data);
+      } catch (e) {}
+    })();
+  }, []);
+
+  if (orders.length === 0) return <p className="text-slate-500">No orders yet.</p>;
+
+  return (
+    <div className="grid gap-3">
+      {orders.map((o) => (
+        <div key={o.id} className="border rounded-lg p-3 bg-white">
+          <div className="font-medium">Order #{o.id.slice(-6)}</div>
+          <div className="text-sm text-slate-600">{o.customer_name} • {o.customer_email}</div>
+          <div className="text-sm text-slate-600">Items: {o.items?.length} • Total: ₹{o.total}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
